@@ -280,7 +280,7 @@ def impute_numerical_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 # Construction  of the preprocessing pipeline
-# ========== 1️⃣ Étape : pipeline de nettoyage global ==========
+# ========== STEP 1: Global Cleaning Pipeline ==========
 
 def global_cleaning(df: pd.DataFrame) -> pd.DataFrame:
     df = clean_column_names(df)
@@ -306,7 +306,7 @@ print(cleaned_df.head(10))
 print(cleaned_df.dtypes)
 print(cleaned_df.isna().sum())
 print(cleaned_df.shape)
-## ========== 2️⃣ Étape : ColumnTransformer pour typage et scaling ==========
+## ========== STEP 2: ColumnTransformer for scaling and encoding ==========
 
 # numerical_cols, boolean_cols, categorical_cols = get_column_types(RAW_BACTERIA_RESISTANCE_DF)
 
@@ -322,14 +322,14 @@ print(cleaned_df.shape)
 #     remainder='passthrough'  # On garde les colonnes non spécifiées
 # )
 
-# # ========== 3️⃣ Pipeline final de preprocessing ==========
+# # ========== STEP 3: Final Preprocessing Pipeline ==========
 
 # preprocessing_pipeline = Pipeline(steps=[
 #     ('cleaning', cleaning_step),
 #     ('transform', preprocessor)
 # ])
 
-# # ========== 4️⃣ Application du pipeline ==========
+# # ========== STEP 4: Pipeline Application ==========
 
 # cleaned_array = preprocessing_pipeline.fit_transform(RAW_BACTERIA_RESISTANCE_DF)
 
@@ -340,5 +340,5 @@ print(cleaned_df.shape)
 # final_columns = numerical_cols + boolean_cols + list(encoded_cat_cols)
 # cleaned_df = pd.DataFrame(cleaned_array, columns=final_columns)
 
-# print("✅ Dataset nettoyé et transformé avec succès :")
+# print("Dataset nettoyé et transformé avec succès :")
 # display(cleaned_df.head())
