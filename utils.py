@@ -16,7 +16,7 @@ def generate_profile_report(df: pd.DataFrame, output_path: Path, title: str = "P
 # Normalizing data for NaN values
 def normalize_missing_values(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    missing_tokens = ['?', 'missing', 'Missing', 'None', 'none', '', 'NaN', 'nan']
+    missing_tokens = ['?', 'missing', 'Missing', 'None', 'none', '', 'NaN', 'nan', 'unknown', 'error', 'n/a']
     df.replace(to_replace=missing_tokens, value=np.nan, inplace=True)
     return df
 
@@ -116,8 +116,8 @@ def uniformize_susceptibility_values(df: pd.DataFrame) -> pd.DataFrame:
     for col in ab_cols:
         # Appliquer la normalisation
         df[col + "_norm"] = df[col].apply(norm_ast)
-        # Créer une colonne binaire 'is_resistant' (1 si R, sinon 0)
-        df[col + "_resistant"] = (df[col + "_norm"] == 'R').astype(int)
+        # # Créer une colonne binaire 'is_resistant' (1 si R, sinon 0)
+        # df[col + "_resistant"] = (df[col + "_norm"] == 'R').astype(int)
         # Supprimer l'ancienne colonne
         df.drop(columns=[col], inplace=True)
     return df
@@ -167,7 +167,6 @@ def clean_collection_date(df: pd.DataFrame) -> pd.DataFrame:
 
     df['collection_date'] = pd.to_datetime(df['collection_date'], errors='coerce', dayfirst=True)
     return df
-
 
 # Drop rows where all columns EXCEPT ['id', 'address','collection_date','notes'] are NaN
 def drop_all_nan_rows(df: pd.DataFrame) -> pd.DataFrame:

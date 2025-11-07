@@ -20,11 +20,10 @@ import utils  # custom utility functions for data preprocessing
 
 import pandas as pd # for data manipulation
 import numpy as np # for numerical operations
-from ydata_profiling import ProfileReport # for generating data profile reports
 from pathlib import Path # for handling file paths
-from IPython.display import display # for displaying dataframes
 from sklearn.model_selection import train_test_split, cross_val_score
-
+from sklearn.metrics import classification_report
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
 
 from sklearn.exceptions import NotFittedError # for handling exceptions
@@ -124,44 +123,41 @@ def global_cleaning(df: pd.DataFrame, drop_columns=None) -> pd.DataFrame:
 
 # ==============================================================================================================================
 
-# PROFILE_REPORT_PATH = Path("profile.html")
-# if PROFILE_REPORT_PATH.exists():
-#     PROFILE_REPORT_PATH.unlink(missing_ok=True)
-#     print("Existing profile report removed")
-# generate_profile_report(RAW_BACTERIA_RESISTANCE_DF, PROFILE_REPORT_PATH)
-# if not PROFILE_REPORT_PATH.exists():
-#     raise StopExecution(
-#         f"The profile report was not generated at {PROFILE_REPORT_PATH}"
-#     )
+PROFILE_REPORT_PATH = Path("profile.html")
+if PROFILE_REPORT_PATH.exists():
+    PROFILE_REPORT_PATH.unlink(missing_ok=True)
+    print("Existing profile report removed")
+utils.generate_profile_report(RAW_BACTERIA_RESISTANCE_DF, PROFILE_REPORT_PATH)
+if not PROFILE_REPORT_PATH.exists():
+    raise StopExecution(
+        f"The profile report was not generated at {PROFILE_REPORT_PATH}"
+    )
+
 
 cleaning_step = FunctionTransformer(global_cleaning, kw_args={'drop_columns': ['id', 'name', 'address', 'notes', 'email', 'collection_date']}, validate=False)
 cleaned_df = cleaning_step.transform(RAW_BACTERIA_RESISTANCE_DF)
 
-# Exporting to CSV for EDA
+# Generate a CSV file for EDA
+eda_step = FunctionTransformer(global_cleaning, validate=False)
+eda_df = eda_step.transform(RAW_BACTERIA_RESISTANCE_DF)
+
 EDA_OUTPUT_PATH = Path("./data/cleaned_bacteria_dataset.csv")
 if not EDA_OUTPUT_PATH.exists():
-    cleaned_df.to_csv(EDA_OUTPUT_PATH, index=False)
+    eda_df.to_csv(EDA_OUTPUT_PATH, index=False)
     print(f"Cleaned dataset exported for EDA: {EDA_OUTPUT_PATH.resolve()}")
 else:
     print("Existing cleaned dataset for EDA found")
 
-# # Generate a profile report to check the cleaned data
-# PROFILE_REPORT_PATH = Path("cleaned_profile.html")
-# if PROFILE_REPORT_PATH.exists():
-#     PROFILE_REPORT_PATH.unlink(missing_ok=True)
-#     print("Existing profile report removed")
-# generate_profile_report(cleaned_df, PROFILE_REPORT_PATH, title="Profiling Report on Bacteria Dataset Cleaned")
-# if not PROFILE_REPORT_PATH.exists():
-#     raise StopExecution(
-#         f"The profile report was not generated at {PROFILE_REPORT_PATH}"
-#     )
-
-
-
-print(cleaned_df.dtypes)
-print(cleaned_df.isna().sum())
-print(cleaned_df.shape)
-
+# Generate a profile report to check the cleaned data
+PROFILE_REPORT_PATH = Path("cleaned_profile.html")
+if PROFILE_REPORT_PATH.exists():
+    PROFILE_REPORT_PATH.unlink(missing_ok=True)
+    print("Existing profile report removed")
+utils.generate_profile_report(eda_df, PROFILE_REPORT_PATH, title="Profiling Report on Bacteria Dataset Cleaned")
+if not PROFILE_REPORT_PATH.exists():
+    raise StopExecution(
+        f"The profile report was not generated at {PROFILE_REPORT_PATH}"
+    )
 
 # ========== STEP 2: ColumnTransformer for scaling and encoding ==========
 
@@ -192,11 +188,18 @@ preprocessing = ColumnTransformer([
     ('bool', boolean_transformer, boolean_cols)
 ])
 
+# target_cols = [
+#     'amx/amp_resistant', 'amc_resistant', 'cz_resistant', 'fox_resistant', 
+#     'ctx/cro_resistant', 'ipm_resistant', 'gen_resistant', 'an_resistant',
+#     'acide_nalidixique_resistant', 'ofx_resistant', 'cip_resistant', 
+#     'c_resistant', 'co-trimoxazole_resistant', 'furanes_resistant', 'colistine_resistant'
+# ]
+
 target_cols = [
-    'amx/amp_resistant', 'amc_resistant', 'cz_resistant', 'fox_resistant', 
-    'ctx/cro_resistant', 'ipm_resistant', 'gen_resistant', 'an_resistant',
-    'acide_nalidixique_resistant', 'ofx_resistant', 'cip_resistant', 
-    'c_resistant', 'co-trimoxazole_resistant', 'furanes_resistant', 'colistine_resistant'
+    'amx/amp_norm', 'amc_norm', 'cz_norm', 'fox_norm', 
+    'ctx/cro_norm', 'ipm_norm', 'gen_norm', 'an_norm',
+    'acide_nalidixique_norm', 'ofx_norm', 'cip_norm', 
+    'c_norm', 'co-trimoxazole_norm', 'furanes_norm', 'colistine_norm'
 ]
 
 X = cleaned_df.drop(columns=target_cols)
@@ -204,8 +207,8 @@ y = cleaned_df[target_cols]
 
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-y_train = y_train.fillna(y_train.mode().iloc[0])
-y_test = y_test.fillna(y_train.mode().iloc[0])
+# y_train = y_train.fillna(y_train.mode().iloc[0])
+# y_test = y_test.fillna(y_train.mode().iloc[0])
 
 
 # Fit sur le train
@@ -221,11 +224,6 @@ y_test = y_test.fillna(y_train.mode().iloc[0])
 # print(f"CV mean: {cv_scores.mean():.3f}")
 
 # # Train a model for each target
-from sklearn.metrics import classification_report
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
-import matplotlib.pyplot as plt
-
-
 models = {}
 
 for target in target_cols:
@@ -243,16 +241,16 @@ for target in target_cols:
     y_pred = SeparateModel.predict(X_test)
     print(classification_report(y_test[target], y_pred, target_names=["Resistant", "Susceptible"]))
 
-# One vs Rest Classifier example
-ovr_model = Pipeline([
-    ('preprocess', preprocessing),
-    ('clf', OneVsRestClassifier(LogisticRegression(max_iter=1000, class_weight='balanced')))
-])
-ovr_model.fit(X_train, y_train)
-cv_scores = cross_val_score(ovr_model, X_train, y_train, cv=5, scoring="f1_weighted")
-print(f"CV scores: {cv_scores}")
-print(f"CV mean: {cv_scores.mean():.3f}")
-target_names = ['amx/amp', 'amc', 'cz', 'fox', 'ctx/cro', 'ipm', 'gen', 'an', 'acide_nalidixique', 'ofx', 'cip', 'c', 'co-trimoxazole', 'furanes', 'colistine']
-ovr_score = ovr_model.score(X_test, y_test)
-y_pred = ovr_model.predict(X_test)
-print(classification_report(y_test, y_pred, target_names=target_names))
+# # One vs Rest Classifier example
+# ovr_model = Pipeline([
+#     ('preprocess', preprocessing),
+#     ('clf', OneVsRestClassifier(LogisticRegression(max_iter=1000, class_weight='balanced')))
+# ])
+# ovr_model.fit(X_train, y_train)
+# cv_scores = cross_val_score(ovr_model, X_train, y_train, cv=5, scoring="f1_weighted")
+# print(f"CV scores: {cv_scores}")
+# print(f"CV mean: {cv_scores.mean():.3f}")
+# target_names = ['amx/amp', 'amc', 'cz', 'fox', 'ctx/cro', 'ipm', 'gen', 'an', 'acide_nalidixique', 'ofx', 'cip', 'c', 'co-trimoxazole', 'furanes', 'colistine']
+# ovr_score = ovr_model.score(X_test, y_test)
+# y_pred = ovr_model.predict(X_test)
+# print(classification_report(y_test, y_pred, target_names=target_names))
