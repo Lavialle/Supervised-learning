@@ -15,8 +15,10 @@ import mlflow
 import mlflow.sklearn
 import pandas as pd # for data manipulation
 import numpy as np # for numerical operations
+import matplotlib.pyplot as plt
 from pathlib import Path # for handling file paths
 from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold, GridSearchCV
+from sklearn.ensemble import StackingClassifier
 from sklearn.metrics import classification_report, f1_score
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
@@ -35,11 +37,9 @@ from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 from catboost import CatBoostClassifier
 
-classification_models = {
-    'XGBoost': XGBClassifier(n_estimators=500, learning_rate=0.05, max_depth=6, use_label_encoder=False),
-    'LightGBM': LGBMClassifier(n_estimators=500, learning_rate=0.05, num_leaves=31),
-    'CatBoost': CatBoostClassifier(iterations=500, learning_rate=0.05, depth=6, verbose=0)
-}
+# Optimization imports
+from hyperopt import fmin, tpe, hp
+
 
 class StopExecution(Exception):
     def _render_traceback_(self):
@@ -177,27 +177,28 @@ cleaning_engineering_pipeline = Pipeline([
 
 RandomForest = Pipeline([
     ('preprocess', preprocessing),
-    ('RandomForest', RandomForestClassifier(random_state=42))
+    ('RandomForest', RandomForestClassifier(random_state=42, class_weight='balanced'))
 ])
+
 
 CatBoost = Pipeline([
     ('preprocess', preprocessing),
-    ('CatBoost', CatBoostClassifier(iterations=500, learning_rate=0.05, depth=6, verbose=0))
-])
+    ('CatBoost', CatBoostClassifier(verbose=0, scale_pos_weight=4510/2304, random_state=42))
+]) 
 
 XGBoost = Pipeline([
     ('preprocess', preprocessing),
-    ('XGBoost', XGBClassifier(n_estimators=2, max_depth=2, learning_rate=1, objective='binary:logistic'))
+    ('XGBoost', XGBClassifier(scale_pos_weight=4510/2304, random_state=42))
 ])
 
 Logistic = Pipeline([
     ('preprocess', preprocessing),
-    ('Logistic', LogisticRegression())        
+    ('Logistic', LogisticRegression(class_weight='balanced'))        
 ])
 
 HistGradient = Pipeline([
     ('preprocess', preprocessing),
-    ('HistGradient', HistGradientBoostingClassifier(random_state=42))    
+    ('HistGradient', HistGradientBoostingClassifier(random_state=42, class_weight='balanced'))    
 ])
 
 df = cleaning_engineering_pipeline.transform(RAW_BACTERIA_RESISTANCE_DF)
@@ -222,66 +223,336 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_
 
 cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
-
-for model, name in zip([RandomForest, CatBoost, XGBoost], ["RF", "CB", "XG"]):
-    scores = cross_val_score(model, X_train, y_train, cv=cv, scoring='f1')
-    print(f"{name} F1: {np.mean(scores):.3f} ± {np.std(scores):.3f}")
-
-
-RandomForest.fit(X_train, y_train)
-rf_pred = RandomForest.predict(X_test)
-cm_rf = confusion_matrix(y_test, rf_pred)
-print(cm_rf)
-print(classification_report(y_test, rf_pred))
-
-CatBoost.fit(X_train, y_train)
-cb_pred = CatBoost.predict(X_test)
-cm_cb = confusion_matrix(y_test, cb_pred)
-print(cm_cb)
-print(classification_report(y_test, cb_pred))
-
-XGBoost.fit(X_train, y_train)
-xg_pred = XGBoost.predict(X_test)
-cm_xg = confusion_matrix(y_test, xg_pred)
-print(cm_xg)
-print(classification_report(y_test, xg_pred))
-
-
-param_grid = {
-    "HistGradient__learning_rate": [0.01, 0.05, 0.1],
-    "HistGradient__max_iter": [100, 200],
-    "HistGradient__max_depth": [3, 5, None]
+models = {
+    "CatBoost": CatBoost,
+    "XGBoost": XGBoost,
+    "HistGradient": HistGradient
 }
 
-grid = GridSearchCV(HistGradient, param_grid, scoring='f1', cv=5, n_jobs=-1)
+search_spaces = {
+    "CatBoost": {
+        "CatBoost__depth": hp.quniform("CatBoost__depth", 3, 10, 1),
+        "CatBoost__learning_rate": hp.uniform("CatBoost__learning_rate", 0.01, 0.3),
+        "CatBoost__iterations": hp.quniform("CatBoost__iterations", 100, 500, 50),
+    },
+    "XGBoost": {
+        "XGBoost__max_depth": hp.quniform("XGBoost__max_depth", 3, 10, 1),
+        "XGBoost__n_estimators": hp.quniform("XGBoost__n_estimators", 100, 500, 50),
+        "XGBoost__learning_rate": hp.uniform("XGBoost__learning_rate", 0.01, 0.3),
+    },
+    "HistGradient": {
+        "HistGradient__max_depth": hp.quniform("HistGradient__max_depth", 3, 10, 1),
+        "HistGradient__max_iter": hp.quniform("HistGradient__max_iter", 100, 500, 50),
+        "HistGradient__learning_rate": hp.uniform("HistGradient__learning_rate", 0.01, 0.3),
+    }
+}
 
-# MLflow
-mlflow.set_tracking_uri("http://127.0.0.1:8080")
-mlflow.set_experiment("bacteria_resistance_classification")
+stack_space = {
+    'catboost__depth': hp.quniform('catboost__depth', 4, 8, 1),
+    'catboost__learning_rate': hp.uniform('catboost__learning_rate', 0.01, 0.2),
+    'xgb__max_depth': hp.quniform('xgb__max_depth', 4, 8, 1),
+    'xgb__learning_rate': hp.uniform('xgb__learning_rate', 0.01, 0.2),
+    'lgbm__num_leaves': hp.quniform('lgbm__num_leaves', 20, 40, 1),
+    'final_estimator__C': hp.loguniform('final_estimator__C', -3, 1)
+}
 
-with mlflow.start_run() as run:
-    mlflow.set_tag("model_type", "HistGradientBoostingClassifier")
+# best = {}
 
-    # Train
-    grid.fit(X_train, y_train)
+# for name, model in models.items():
+#     print(f"\nOptimisation pour {name}...")
 
-    # Best model
-    best_model = grid.best_estimator_
-    mlflow.log_params(grid.best_params_)
+#     # Évaluation simple avant optimisation
+#     scores = cross_val_score(model, X_train, y_train, cv=cv, scoring='f1')
+#     print(f"{name} F1: {np.mean(scores):.3f} ± {np.std(scores):.3f}")
 
-    # Predict
-    y_pred = best_model.predict(X_test)
-    f1 = f1_score(y_test, y_pred)
-    mlflow.log_metric("f1_score", f1)
+#     # Fonction objectif pour hyperopt
+#     def objective(params):
+#         for key in params:
+#             if "depth" in key or "iterations" in key or "n_estimators" in key or "max_iter" in key:
+#                 params[key] = int(params[key])
+#         model.set_params(**params)
+#         score = cross_val_score(model, X_train, y_train, cv=cv, scoring='f1', n_jobs=-1).mean()
+#         return -score  # car fmin minimise
 
-    cm = confusion_matrix(y_test, y_pred)
-    print("Confusion Matrix:\n", cm)
 
-    report = classification_report(y_test, y_pred)
-    print(report)
+#     best_params = fmin(
+#         fn=objective,
+#         space=search_spaces[name],
+#         algo=tpe.suggest,
+#         max_evals=20,
+#     )
 
-    # Optionally log the report as text
-    mlflow.log_text(report, "classification_report.txt")
+#     best[name] = best_params
+#     print(f"Best params for {name}: {best_params}")
 
-    # Log the model
-    mlflow.sklearn.log_model(best_model, artifact_path="model")
+# print("\nRésultats finaux :")
+# print(best)
+
+
+# for name, model in models.items():
+#     # Convertir les hyperopt float -> int si nécessaire
+#     params = {k: int(v) if k.endswith("depth") or k.endswith("iterations") or k.endswith("n_estimators") or k.endswith("max_iter") else v
+#               for k,v in best[name].items()}
+#     model.set_params(**params)
+#     model.fit(X_train, y_train)
+#     y_pred = model.predict(X_test)
+#     print(f"--- {name} ---")
+#     print(classification_report(y_test, y_pred))
+#     cm = confusion_matrix(y_test, y_pred)
+#     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['Non-MDR', 'MDR'])
+#     disp.plot(cmap=plt.cm.Blues)
+#     plt.title(f"Confusion Matrix - {name}")
+#     plt.show()
+
+def to_dataframe(X):
+    # Si X est déjà un DataFrame, retourne-le
+    if isinstance(X, pd.DataFrame):
+        return X
+    # Sinon, crée un DataFrame avec des noms génériques
+    return pd.DataFrame(X)
+
+def stacking_objective(params):
+    cat_params = {
+        'depth': int(params['catboost__depth']),
+        'learning_rate': params['catboost__learning_rate'],
+        'iterations': int(params['catboost__iterations']),
+        'l2_leaf_reg': params['catboost__l2_leaf_reg'],
+        'verbose': 0,
+        'scale_pos_weight': 4510/2304,
+        'random_state': 42
+    }
+    xgb_params = {
+        'max_depth': int(params['xgb__max_depth']),
+        'learning_rate': params['xgb__learning_rate'],
+        'n_estimators': int(params['xgb__n_estimators']),
+        'subsample': params['xgb__subsample'],
+        'colsample_bytree': params['xgb__colsample_bytree'],
+        'gamma': params['xgb__gamma'],
+        'scale_pos_weight': 4510/2304,
+        'random_state': 42
+    }
+    lgbm_params = {
+        'num_leaves': int(params['lgbm__num_leaves']),
+        'min_child_samples': int(params['lgbm__min_child_samples']),
+        'subsample': params['lgbm__subsample'],
+        'reg_alpha': params['lgbm__reg_alpha'],
+        'reg_lambda': params['lgbm__reg_lambda'],
+        'random_state': 42,
+        'verbose': -1
+    }
+    final_params = {
+        'n_estimators': int(params['rf__n_estimators']),
+        'max_depth': int(params['rf__max_depth']),
+        'class_weight': 'balanced',
+        'random_state': 42
+    }
+
+    cat = Pipeline([
+        ('preprocess', preprocessing),
+        ('catboost', CatBoostClassifier(**cat_params))
+    ])
+    xgb = Pipeline([
+        ('preprocess', preprocessing),
+        ('xgb', XGBClassifier(**xgb_params))
+    ])
+    lgbm = Pipeline([
+        ('preprocess', preprocessing),
+        ('to_df', FunctionTransformer(to_dataframe, validate=False)),
+        ('lgbm', LGBMClassifier(**lgbm_params))
+    ])
+    final_est = RandomForestClassifier(**final_params)
+
+    stack = StackingClassifier(
+        estimators=[
+            ('cat', cat),
+            ('xgb', xgb),
+            ('lgbm', lgbm)
+        ],
+        final_estimator=final_est,
+        cv=cv,
+        n_jobs=-1
+    )
+
+    score = cross_val_score(stack, X_train, y_train, cv=cv, scoring='f1', n_jobs=-1).mean()
+    return -score
+
+stack_space = {
+    'catboost__depth': hp.quniform('catboost__depth', 4, 8, 1),
+    'catboost__learning_rate': hp.uniform('catboost__learning_rate', 0.01, 0.2),
+    'catboost__iterations': hp.quniform('catboost__iterations', 100, 400, 50),
+    'catboost__l2_leaf_reg': hp.uniform('catboost__l2_leaf_reg', 1, 10),
+    'xgb__max_depth': hp.quniform('xgb__max_depth', 4, 8, 1),
+    'xgb__learning_rate': hp.uniform('xgb__learning_rate', 0.01, 0.2),
+    'xgb__n_estimators': hp.quniform('xgb__n_estimators', 100, 400, 50),
+    'xgb__subsample': hp.uniform('xgb__subsample', 0.6, 1.0),
+    'xgb__colsample_bytree': hp.uniform('xgb__colsample_bytree', 0.6, 1.0),
+    'xgb__gamma': hp.uniform('xgb__gamma', 0, 5),
+    'lgbm__num_leaves': hp.quniform('lgbm__num_leaves', 20, 40, 1),
+    'lgbm__min_child_samples': hp.quniform('lgbm__min_child_samples', 10, 30, 1),
+    'lgbm__subsample': hp.uniform('lgbm__subsample', 0.6, 1.0),
+    'lgbm__reg_alpha': hp.uniform('lgbm__reg_alpha', 0, 2),
+    'lgbm__reg_lambda': hp.uniform('lgbm__reg_lambda', 0, 2),
+    'rf__n_estimators': hp.quniform('rf__n_estimators', 100, 400, 50),
+    'rf__max_depth': hp.quniform('rf__max_depth', 4, 10, 1)
+}
+
+print("\nOptimisation du modèle stacké avec RandomForest méta-modèle...")
+best_stack = fmin(
+    fn=stacking_objective,
+    space=stack_space,
+    algo=tpe.suggest,
+    max_evals=50,
+)
+
+print("Best params for stacking:", best_stack)
+
+# Fit final stacking model with best params
+cat_params = {
+    'depth': int(best_stack['catboost__depth']),
+    'learning_rate': best_stack['catboost__learning_rate'],
+    'iterations': int(best_stack['catboost__iterations']),
+    'l2_leaf_reg': best_stack['catboost__l2_leaf_reg'],
+    'verbose': 0,
+    'scale_pos_weight': 4510/2304,
+    'random_state': 42
+}
+xgb_params = {
+    'max_depth': int(best_stack['xgb__max_depth']),
+    'learning_rate': best_stack['xgb__learning_rate'],
+    'n_estimators': int(best_stack['xgb__n_estimators']),
+    'subsample': best_stack['xgb__subsample'],
+    'colsample_bytree': best_stack['xgb__colsample_bytree'],
+    'gamma': best_stack['xgb__gamma'],
+    'scale_pos_weight': 4510/2304,
+    'random_state': 42
+}
+lgbm_params = {
+    'num_leaves': int(best_stack['lgbm__num_leaves']),
+    'min_child_samples': int(best_stack['lgbm__min_child_samples']),
+    'subsample': best_stack['lgbm__subsample'],
+    'reg_alpha': best_stack['lgbm__reg_alpha'],
+    'reg_lambda': best_stack['lgbm__reg_lambda'],
+    'random_state': 42,
+    'verbose': -1
+}
+final_params = {
+    'n_estimators': int(best_stack['rf__n_estimators']),
+    'max_depth': int(best_stack['rf__max_depth']),
+    'class_weight': 'balanced',
+    'random_state': 42
+}
+
+cat = Pipeline([
+    ('preprocess', preprocessing),
+    ('catboost', CatBoostClassifier(**cat_params))
+])
+
+xgb = Pipeline([
+    ('preprocess', preprocessing),
+    ('xgb', XGBClassifier(**xgb_params))
+])
+
+lgbm = Pipeline([
+    ('preprocess', preprocessing),
+    ('to_df', FunctionTransformer(to_dataframe, validate=False)),
+    ('lgbm', LGBMClassifier(**lgbm_params))
+])
+
+final_est = RandomForestClassifier(**final_params)
+
+stack = StackingClassifier(
+    estimators=[
+        ('cat', cat),
+        ('xgb', xgb),
+        ('lgbm', lgbm)
+    ],
+    final_estimator=final_est,
+    cv=cv,
+    n_jobs=-1
+)
+
+stack.fit(X_train, y_train)
+y_pred = stack.predict(X_test)
+print("--- Stacking (RandomForest méta-modèle) ---")
+print(classification_report(y_test, y_pred))
+cm = confusion_matrix(y_test, y_pred)
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['Non-MDR', 'MDR'])
+disp.plot(cmap=plt.cm.Blues)
+plt.title("Confusion Matrix - Stacking (RF meta)")
+plt.show()
+
+
+# RandomForest.fit(X_train, y_train)
+# rf_pred = RandomForest.predict(X_test)
+# cm_rf = confusion_matrix(y_test, rf_pred)
+# print(cm_rf)
+# print(classification_report(y_test, rf_pred))
+
+# CatBoost.fit(X_train, y_train)
+# cb_pred = CatBoost.predict(X_test)
+# cm_cb = confusion_matrix(y_test, cb_pred)
+# print(cm_cb)
+# print(classification_report(y_test, cb_pred))
+
+# XGBoost.fit(X_train, y_train)
+# xg_pred = XGBoost.predict(X_test)
+# cm_xg = confusion_matrix(y_test, xg_pred)
+# print(cm_xg)
+# print(classification_report(y_test, xg_pred))
+
+
+# Hyperparameters optimization
+
+
+
+
+
+
+
+
+
+
+
+
+# param_grid = {
+#     "HistGradient__learning_rate": [0.01, 0.05, 0.1],
+#     "HistGradient__max_iter": [100, 200],
+#     "HistGradient__max_depth": [3, 5, None]
+# }
+
+# grid = GridSearchCV(HistGradient, param_grid, scoring='f1', cv=5, n_jobs=-1)
+
+
+
+
+
+# # MLflow
+# mlflow.set_tracking_uri("http://127.0.0.1:8080")
+# mlflow.set_experiment("bacteria_resistance_classification")
+
+# with mlflow.start_run() as run:
+#     mlflow.set_tag("model_type", "HistGradientBoostingClassifier")
+
+#     # Train
+#     grid.fit(X_train, y_train)
+
+#     # Best model
+#     best_model = grid.best_estimator_
+#     mlflow.log_params(grid.best_params_)
+
+#     # Predict
+#     y_pred = best_model.predict(X_test)
+#     f1 = f1_score(y_test, y_pred)
+#     mlflow.log_metric("f1_score", f1)
+
+#     cm = confusion_matrix(y_test, y_pred)
+#     print("Confusion Matrix:\n", cm)
+
+#     report = classification_report(y_test, y_pred)
+#     print(report)
+
+#     # Optionally log the report as text
+#     mlflow.log_text(report, "classification_report.txt")
+
+#     # Log the model
+#     mlflow.sklearn.log_model(best_model, artifact_path="model")
