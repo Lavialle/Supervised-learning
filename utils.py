@@ -257,10 +257,6 @@ def bin_age_and_drop(df: pd.DataFrame, age_col="age", bins=None, labels=None) ->
         labels = ["child", "adult", "senior", "elderly"]
     df[age_col] = pd.to_numeric(df[age_col], errors="coerce")
     df["age_bin"] = pd.cut(df[age_col], bins=bins, labels=labels, include_lowest=True)
-    for label in labels:
-        col = f"age_bin_{label}"
-        df[col] = (df["age_bin"] == label).astype(int)
-    df.drop(columns=["age_bin", age_col], inplace=True)
     return df
 
 # Return the list of the numerical, boolean and categorical columns
@@ -270,14 +266,14 @@ def get_column_types(df: pd.DataFrame):
     """
     cols = set(df.columns)
 
-    numerical_candidates = ['infection_freq', 'age_comorb']
+    numerical_candidates = ['infection_freq', 'age_comorb', 'comorbidity_score', 'age']
     numerical_cols = [c for c in numerical_candidates if c in cols]
 
-    boolean_cols = [c for c in df.columns if c.endswith('_resistant') or c in {'diabetes', 'hypertension', 'hospital_before', 'is_MDR', 'age_bin_child', 'age_bin_adult', 'age_bin_senior', 'age_bin_elderly'}]
+    boolean_cols = [c for c in df.columns if c.endswith('_resistant') or c in {'diabetes', 'hypertension', 'hospital_before', 'is_MDR'}]
     # keep order and unique
     boolean_cols = list(dict.fromkeys(boolean_cols))
 
-    categorical_candidates = ['gender', 'strain']
+    categorical_candidates = ['gender', 'strain', 'age_bin']
     categorical_cols = [c for c in categorical_candidates if c in cols]
 
     return numerical_cols, boolean_cols, categorical_cols
@@ -307,8 +303,7 @@ def drop_correlated_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.drop(columns=[
         'amx/amp_resistant', 'amc_resistant', 'cz_resistant', 'fox_resistant', 'ctx/cro_resistant', 'ipm_resistant',
         'gen_resistant', 'an_resistant', 'acide_nalidixique_resistant', 'ofx_resistant', 'cip_resistant', 'c_resistant',
-        'co-trimoxazole_resistant', 'furanes_resistant', 'colistine_resistant', 'comorbidity_score', 'diabetes', 'hypertension',
-        'hospital_before'
+        'co-trimoxazole_resistant', 'furanes_resistant', 'colistine_resistant', 'comorbidity_score', 'age'
     ])
     return df
 
