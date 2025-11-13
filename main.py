@@ -220,43 +220,46 @@ X = df.drop(columns=["is_MDR"])
 y = df["is_MDR"]
 print(X.info())
 print(X.isna().sum())
+print(y.value_counts())
+class_counts = y.value_counts()
+proportion_MDR = class_counts.iloc[0] / class_counts.iloc[1]
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
 cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
-models = {
-    "CatBoost": CatBoost,
-    "XGBoost": XGBoost,
-    "HistGradient": HistGradient
-}
+# models = {
+#     "CatBoost": CatBoost,
+#     "XGBoost": XGBoost,
+#     "HistGradient": HistGradient
+# }
 
-search_spaces = {
-    "CatBoost": {
-        "CatBoost__depth": hp.quniform("CatBoost__depth", 3, 10, 1),
-        "CatBoost__learning_rate": hp.uniform("CatBoost__learning_rate", 0.01, 0.3),
-        "CatBoost__iterations": hp.quniform("CatBoost__iterations", 100, 500, 50),
-    },
-    "XGBoost": {
-        "XGBoost__max_depth": hp.quniform("XGBoost__max_depth", 3, 10, 1),
-        "XGBoost__n_estimators": hp.quniform("XGBoost__n_estimators", 100, 500, 50),
-        "XGBoost__learning_rate": hp.uniform("XGBoost__learning_rate", 0.01, 0.3),
-    },
-    "HistGradient": {
-        "HistGradient__max_depth": hp.quniform("HistGradient__max_depth", 3, 10, 1),
-        "HistGradient__max_iter": hp.quniform("HistGradient__max_iter", 100, 500, 50),
-        "HistGradient__learning_rate": hp.uniform("HistGradient__learning_rate", 0.01, 0.3),
-    }
-}
+# search_spaces = {
+#     "CatBoost": {
+#         "CatBoost__depth": hp.quniform("CatBoost__depth", 3, 10, 1),
+#         "CatBoost__learning_rate": hp.uniform("CatBoost__learning_rate", 0.01, 0.3),
+#         "CatBoost__iterations": hp.quniform("CatBoost__iterations", 100, 500, 50),
+#     },
+#     "XGBoost": {
+#         "XGBoost__max_depth": hp.quniform("XGBoost__max_depth", 3, 10, 1),
+#         "XGBoost__n_estimators": hp.quniform("XGBoost__n_estimators", 100, 500, 50),
+#         "XGBoost__learning_rate": hp.uniform("XGBoost__learning_rate", 0.01, 0.3),
+#     },
+#     "HistGradient": {
+#         "HistGradient__max_depth": hp.quniform("HistGradient__max_depth", 3, 10, 1),
+#         "HistGradient__max_iter": hp.quniform("HistGradient__max_iter", 100, 500, 50),
+#         "HistGradient__learning_rate": hp.uniform("HistGradient__learning_rate", 0.01, 0.3),
+#     }
+# }
 
-stack_space = {
-    'catboost__depth': hp.quniform('catboost__depth', 4, 8, 1),
-    'catboost__learning_rate': hp.uniform('catboost__learning_rate', 0.01, 0.2),
-    'xgb__max_depth': hp.quniform('xgb__max_depth', 4, 8, 1),
-    'xgb__learning_rate': hp.uniform('xgb__learning_rate', 0.01, 0.2),
-    'lgbm__num_leaves': hp.quniform('lgbm__num_leaves', 20, 40, 1),
-    'final_estimator__C': hp.loguniform('final_estimator__C', -3, 1)
-}
+# stack_space = {
+#     'catboost__depth': hp.quniform('catboost__depth', 4, 8, 1),
+#     'catboost__learning_rate': hp.uniform('catboost__learning_rate', 0.01, 0.2),
+#     'xgb__max_depth': hp.quniform('xgb__max_depth', 4, 8, 1),
+#     'xgb__learning_rate': hp.uniform('xgb__learning_rate', 0.01, 0.2),
+#     'lgbm__num_leaves': hp.quniform('lgbm__num_leaves', 20, 40, 1),
+#     'final_estimator__C': hp.loguniform('final_estimator__C', -3, 1)
+# }
 
 # best = {}
 
@@ -281,7 +284,7 @@ stack_space = {
 #         fn=objective,
 #         space=search_spaces[name],
 #         algo=tpe.suggest,
-#         max_evals=20,
+#         max_evals=10,
 #     )
 
 #     best[name] = best_params
@@ -306,6 +309,9 @@ stack_space = {
 #     plt.title(f"Confusion Matrix - {name}")
 #     plt.show()
 
+# =================================================================================================
+# STACKING CLASSIFIER WITH RANDOM FOREST AS FINAL ESTIMATOR
+# =================================================================================================
 def to_dataframe(X):
     # Si X est déjà un DataFrame, retourne-le
     if isinstance(X, pd.DataFrame):
@@ -320,7 +326,7 @@ def stacking_objective(params):
         'iterations': int(params['catboost__iterations']),
         'l2_leaf_reg': params['catboost__l2_leaf_reg'],
         'verbose': 0,
-        'scale_pos_weight': 4510/2304,
+        'scale_pos_weight': proportion_MDR,
         'random_state': 42
     }
     xgb_params = {
@@ -330,7 +336,7 @@ def stacking_objective(params):
         'subsample': params['xgb__subsample'],
         'colsample_bytree': params['xgb__colsample_bytree'],
         'gamma': params['xgb__gamma'],
-        'scale_pos_weight': 4510/2304,
+        'scale_pos_weight': proportion_MDR,
         'random_state': 42
     }
     lgbm_params = {
@@ -403,7 +409,7 @@ best_stack = fmin(
     fn=stacking_objective,
     space=stack_space,
     algo=tpe.suggest,
-    max_evals=10,
+    max_evals=100,
 )
 
 print("Best params for stacking:", best_stack)
@@ -415,7 +421,7 @@ cat_params = {
     'iterations': int(best_stack['catboost__iterations']),
     'l2_leaf_reg': best_stack['catboost__l2_leaf_reg'],
     'verbose': 0,
-    'scale_pos_weight': 4510/2304,
+    'scale_pos_weight': proportion_MDR,
     'random_state': 42
 }
 xgb_params = {
@@ -425,7 +431,7 @@ xgb_params = {
     'subsample': best_stack['xgb__subsample'],
     'colsample_bytree': best_stack['xgb__colsample_bytree'],
     'gamma': best_stack['xgb__gamma'],
-    'scale_pos_weight': 4510/2304,
+    'scale_pos_weight': proportion_MDR,
     'random_state': 42
 }
 lgbm_params = {
@@ -483,7 +489,9 @@ disp.plot(cmap=plt.cm.Blues)
 plt.title("Confusion Matrix - Stacking (RF meta)")
 plt.show()
 
-
+# =================================================================================================
+# INDIVIDUAL MODELS EVALUATION
+# =================================================================================================
 
 # RandomForest.fit(X_train, y_train)
 # rf_pred = RandomForest.predict(X_test)
