@@ -127,8 +127,8 @@ else:
 
 # numerical_cols, boolean_cols, categorical_cols = get_column_types(cleaned_df)
 numerical_cols = ['infection_freq', 'age_comorb']
-boolean_cols = ['age_bin_child', 'age_bin_adult', 'age_bin_senior', 'age_bin_elderly']#['diabetes', 'hypertension', 'hospital_before']
-categorical_cols = ['gender',  'strain']
+boolean_cols = ['diabetes', 'hypertension', 'hospital_before']
+categorical_cols = ['gender', 'strain', 'age_bin']
 
 
 # Encoders / scalers
@@ -139,7 +139,7 @@ numeric_transformer = Pipeline([
 
 categorical_transformer = Pipeline([
     ('imputer', SimpleImputer(strategy='most_frequent')),
-    ('encoder', OneHotEncoder(handle_unknown='ignore', drop='if_binary'))
+    ('encoder', OneHotEncoder(handle_unknown='ignore'))
 ])
 
 boolean_transformer = Pipeline([
@@ -167,7 +167,7 @@ feature_engineering = FunctionTransformer(add_resistance_features, validate=Fals
 preprocessing = ColumnTransformer([
     ('num', numeric_transformer, numerical_cols),
     ('cat', categorical_transformer, categorical_cols),
-    ('bool', boolean_transformer, boolean_cols)
+    # ('bool', boolean_transformer, boolean_cols)
 ])
 
 
@@ -197,10 +197,7 @@ Logistic = Pipeline([
     ('Logistic', LogisticRegression(class_weight='balanced'))        
 ])
 
-HistGradient = Pipeline([
-    ('preprocess', preprocessing),
-    ('HistGradient', HistGradientBoostingClassifier(random_state=42, class_weight='balanced'))    
-])
+
 
 df = cleaning_engineering_pipeline.transform(RAW_BACTERIA_RESISTANCE_DF)
 
@@ -219,8 +216,6 @@ df = cleaning_engineering_pipeline.transform(RAW_BACTERIA_RESISTANCE_DF)
 X = df.drop(columns=["is_MDR"])
 y = df["is_MDR"]
 print(X.info())
-print(X.isna().sum())
-print(y.value_counts())
 class_counts = y.value_counts()
 proportion_MDR = class_counts.iloc[0] / class_counts.iloc[1]
 
@@ -228,283 +223,282 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_
 
 cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
-# models = {
-#     "CatBoost": CatBoost,
-#     "XGBoost": XGBoost,
-#     "HistGradient": HistGradient
-# }
+# ===============================================================================================
+# Hyperparameter optimization with Hyperopt for CatBoost, XGBoost and HistGradient
+# ===============================================================================================
 
-# search_spaces = {
-#     "CatBoost": {
-#         "CatBoost__depth": hp.quniform("CatBoost__depth", 3, 10, 1),
-#         "CatBoost__learning_rate": hp.uniform("CatBoost__learning_rate", 0.01, 0.3),
-#         "CatBoost__iterations": hp.quniform("CatBoost__iterations", 100, 500, 50),
-#     },
-#     "XGBoost": {
-#         "XGBoost__max_depth": hp.quniform("XGBoost__max_depth", 3, 10, 1),
-#         "XGBoost__n_estimators": hp.quniform("XGBoost__n_estimators", 100, 500, 50),
-#         "XGBoost__learning_rate": hp.uniform("XGBoost__learning_rate", 0.01, 0.3),
-#     },
-#     "HistGradient": {
-#         "HistGradient__max_depth": hp.quniform("HistGradient__max_depth", 3, 10, 1),
-#         "HistGradient__max_iter": hp.quniform("HistGradient__max_iter", 100, 500, 50),
-#         "HistGradient__learning_rate": hp.uniform("HistGradient__learning_rate", 0.01, 0.3),
-#     }
-# }
+models = {
+    "CatBoost": CatBoost,
+    "XGBoost": XGBoost,
+}
 
-# stack_space = {
-#     'catboost__depth': hp.quniform('catboost__depth', 4, 8, 1),
-#     'catboost__learning_rate': hp.uniform('catboost__learning_rate', 0.01, 0.2),
-#     'xgb__max_depth': hp.quniform('xgb__max_depth', 4, 8, 1),
-#     'xgb__learning_rate': hp.uniform('xgb__learning_rate', 0.01, 0.2),
-#     'lgbm__num_leaves': hp.quniform('lgbm__num_leaves', 20, 40, 1),
-#     'final_estimator__C': hp.loguniform('final_estimator__C', -3, 1)
-# }
+search_spaces = {
+    "CatBoost": {
+        "CatBoost__depth": hp.quniform("CatBoost__depth", 3, 10, 1),
+        "CatBoost__learning_rate": hp.uniform("CatBoost__learning_rate", 0.01, 0.3),
+        "CatBoost__iterations": hp.quniform("CatBoost__iterations", 100, 500, 50),
+    },
+    "XGBoost": {
+        "XGBoost__max_depth": hp.quniform("XGBoost__max_depth", 3, 10, 1),
+        "XGBoost__n_estimators": hp.quniform("XGBoost__n_estimators", 100, 500, 50),
+        "XGBoost__learning_rate": hp.uniform("XGBoost__learning_rate", 0.01, 0.3),
+    }
+}
 
-# best = {}
+best = {}
 
-# for name, model in models.items():
-#     print(f"\nOptimisation pour {name}...")
+for name, model in models.items():
+    print(f"\nOptimisation pour {name}...")
 
-#     # Évaluation simple avant optimisation
-#     scores = cross_val_score(model, X_train, y_train, cv=cv, scoring='f1')
-#     print(f"{name} F1: {np.mean(scores):.3f} ± {np.std(scores):.3f}")
+    # Évaluation simple avant optimisation
+    scores = cross_val_score(model, X_train, y_train, cv=cv, scoring='f1')
+    print(f"{name} F1: {np.mean(scores):.3f} ± {np.std(scores):.3f}")
 
-#     # Fonction objectif pour hyperopt
-#     def objective(params):
-#         for key in params:
-#             if "depth" in key or "iterations" in key or "n_estimators" in key or "max_iter" in key:
-#                 params[key] = int(params[key])
-#         model.set_params(**params)
-#         score = cross_val_score(model, X_train, y_train, cv=cv, scoring='f1', n_jobs=-1).mean()
-#         return -score  # car fmin minimise
+    # Fonction objectif pour hyperopt
+    def objective(params):
+        for key in params:
+            if "depth" in key or "iterations" in key or "n_estimators" in key or "max_iter" in key:
+                params[key] = int(params[key])
+        model.set_params(**params)
+        score = cross_val_score(model, X_train, y_train, cv=cv, scoring='f1', n_jobs=-1).mean()
+        return -score  # car fmin minimise
 
 
-#     best_params = fmin(
-#         fn=objective,
-#         space=search_spaces[name],
-#         algo=tpe.suggest,
-#         max_evals=10,
-#     )
+    best_params = fmin(
+        fn=objective,
+        space=search_spaces[name],
+        algo=tpe.suggest,
+        max_evals=10,
+    )
 
-#     best[name] = best_params
-#     print(f"Best params for {name}: {best_params}")
+    best[name] = best_params
+    print(f"Best params for {name}: {best_params}")
 
-# print("\nRésultats finaux :")
-# print(best)
+print("\nRésultats finaux :")
+print(best)
 
 
-# for name, model in models.items():
-#     # Convertir les hyperopt float -> int si nécessaire
-#     params = {k: int(v) if k.endswith("depth") or k.endswith("iterations") or k.endswith("n_estimators") or k.endswith("max_iter") else v
-#               for k,v in best[name].items()}
-#     model.set_params(**params)
-#     model.fit(X_train, y_train)
-#     y_pred = model.predict(X_test)
-#     print(f"--- {name} ---")
-#     print(classification_report(y_test, y_pred))
-#     cm = confusion_matrix(y_test, y_pred)
-#     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['Non-MDR', 'MDR'])
-#     disp.plot(cmap=plt.cm.Blues)
-#     plt.title(f"Confusion Matrix - {name}")
-#     plt.show()
+for name, model in models.items():
+    # Convertir les hyperopt float -> int si nécessaire
+    params = {k: int(v) if k.endswith("depth") or k.endswith("iterations") or k.endswith("n_estimators") or k.endswith("max_iter") else v
+              for k,v in best[name].items()}
+    model.set_params(**params)
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    print(f"--- {name} ---")
+    print(classification_report(y_test, y_pred))
+    cm = confusion_matrix(y_test, y_pred)
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['Non-MDR', 'MDR'])
+    disp.plot(cmap=plt.cm.Blues)
+    plt.title(f"Confusion Matrix - {name}")
+    plt.show()
 
 # =================================================================================================
 # STACKING CLASSIFIER WITH RANDOM FOREST AS FINAL ESTIMATOR
 # =================================================================================================
-def to_dataframe(X):
-    # Si X est déjà un DataFrame, retourne-le
-    if isinstance(X, pd.DataFrame):
-        return X
-    # Sinon, crée un DataFrame avec des noms génériques
-    return pd.DataFrame(X)
+# def to_dataframe(X):
+#     # Si X est déjà un DataFrame, retourne-le
+#     if isinstance(X, pd.DataFrame):
+#         return X
+#     # Sinon, crée un DataFrame avec des noms génériques
+#     return pd.DataFrame(X)
 
-def stacking_objective(params):
-    cat_params = {
-        'depth': int(params['catboost__depth']),
-        'learning_rate': params['catboost__learning_rate'],
-        'iterations': int(params['catboost__iterations']),
-        'l2_leaf_reg': params['catboost__l2_leaf_reg'],
-        'verbose': 0,
-        'scale_pos_weight': proportion_MDR,
-        'random_state': 42
-    }
-    xgb_params = {
-        'max_depth': int(params['xgb__max_depth']),
-        'learning_rate': params['xgb__learning_rate'],
-        'n_estimators': int(params['xgb__n_estimators']),
-        'subsample': params['xgb__subsample'],
-        'colsample_bytree': params['xgb__colsample_bytree'],
-        'gamma': params['xgb__gamma'],
-        'scale_pos_weight': proportion_MDR,
-        'random_state': 42
-    }
-    lgbm_params = {
-        'num_leaves': int(params['lgbm__num_leaves']),
-        'min_child_samples': int(params['lgbm__min_child_samples']),
-        'subsample': params['lgbm__subsample'],
-        'reg_alpha': params['lgbm__reg_alpha'],
-        'reg_lambda': params['lgbm__reg_lambda'],
-        'random_state': 42,
-        'verbose': -1
-    }
-    final_params = {
-        'n_estimators': int(params['rf__n_estimators']),
-        'max_depth': int(params['rf__max_depth']),
-        'class_weight': 'balanced',
-        'random_state': 42
-    }
+# def stacking_objective(params):
+#     cat_params = {
+#         'depth': int(params['catboost__depth']),
+#         'learning_rate': params['catboost__learning_rate'],
+#         'iterations': int(params['catboost__iterations']),
+#         'l2_leaf_reg': params['catboost__l2_leaf_reg'],
+#         'verbose': 0,
+#         'scale_pos_weight': proportion_MDR,
+#         'random_state': 42
+#     }
+#     xgb_params = {
+#         'max_depth': int(params['xgb__max_depth']),
+#         'learning_rate': params['xgb__learning_rate'],
+#         'n_estimators': int(params['xgb__n_estimators']),
+#         'subsample': params['xgb__subsample'],
+#         'colsample_bytree': params['xgb__colsample_bytree'],
+#         'gamma': params['xgb__gamma'],
+#         'scale_pos_weight': proportion_MDR,
+#         'random_state': 42
+#     }
+#     lgbm_params = {
+#         'num_leaves': int(params['lgbm__num_leaves']),
+#         'min_child_samples': int(params['lgbm__min_child_samples']),
+#         'subsample': params['lgbm__subsample'],
+#         'reg_alpha': params['lgbm__reg_alpha'],
+#         'reg_lambda': params['lgbm__reg_lambda'],
+#         'random_state': 42,
+#         'verbose': -1
+#     }
+#     final_params = {
+#         'n_estimators': int(params['rf__n_estimators']),
+#         'max_depth': int(params['rf__max_depth']),
+#         'class_weight': 'balanced',
+#         'random_state': 42
+#     }
 
-    cat = Pipeline([
-        ('preprocess', preprocessing),
-        ('catboost', CatBoostClassifier(**cat_params))
-    ])
-    xgb = Pipeline([
-        ('preprocess', preprocessing),
-        ('xgb', XGBClassifier(**xgb_params))
-    ])
-    lgbm = Pipeline([
-        ('preprocess', preprocessing),
-        ('to_df', FunctionTransformer(to_dataframe, validate=False)),
-        ('lgbm', LGBMClassifier(**lgbm_params))
-    ])
-    final_est = RandomForestClassifier(**final_params)
+#     cat = Pipeline([
+#         ('preprocess', preprocessing),
+#         ('catboost', CatBoostClassifier(**cat_params))
+#     ])
+#     xgb = Pipeline([
+#         ('preprocess', preprocessing),
+#         ('xgb', XGBClassifier(**xgb_params))
+#     ])
+#     lgbm = Pipeline([
+#         ('preprocess', preprocessing),
+#         ('to_df', FunctionTransformer(to_dataframe, validate=False)),
+#         ('lgbm', LGBMClassifier(**lgbm_params))
+#     ])
+#     final_est = RandomForestClassifier(**final_params)
 
-    stack = StackingClassifier(
-        estimators=[
-            ('cat', cat),
-            ('xgb', xgb),
-            ('lgbm', lgbm)
-        ],
-        final_estimator=final_est,
-        cv=cv,
-        n_jobs=-1
-    )
+#     stack = StackingClassifier(
+#         estimators=[
+#             ('cat', cat),
+#             ('xgb', xgb),
+#             # ('lgbm', lgbm)
+#         ],
+#         final_estimator=final_est,
+#         cv=cv,
+#         n_jobs=-1
+#     )
 
-    score = cross_val_score(stack, X_train, y_train, cv=cv, scoring='f1', n_jobs=-1).mean()
-    return -score
+#     score = cross_val_score(stack, X_train, y_train, cv=cv, scoring='f1', n_jobs=-1).mean()
+#     return -score
 
-stack_space = {
-    'catboost__depth': hp.quniform('catboost__depth', 4, 8, 1),
-    'catboost__learning_rate': hp.uniform('catboost__learning_rate', 0.01, 0.2),
-    'catboost__iterations': hp.quniform('catboost__iterations', 100, 400, 50),
-    'catboost__l2_leaf_reg': hp.uniform('catboost__l2_leaf_reg', 1, 10),
-    'xgb__max_depth': hp.quniform('xgb__max_depth', 4, 8, 1),
-    'xgb__learning_rate': hp.uniform('xgb__learning_rate', 0.01, 0.2),
-    'xgb__n_estimators': hp.quniform('xgb__n_estimators', 100, 400, 50),
-    'xgb__subsample': hp.uniform('xgb__subsample', 0.6, 1.0),
-    'xgb__colsample_bytree': hp.uniform('xgb__colsample_bytree', 0.6, 1.0),
-    'xgb__gamma': hp.uniform('xgb__gamma', 0, 5),
-    'lgbm__num_leaves': hp.quniform('lgbm__num_leaves', 20, 40, 1),
-    'lgbm__min_child_samples': hp.quniform('lgbm__min_child_samples', 10, 30, 1),
-    'lgbm__subsample': hp.uniform('lgbm__subsample', 0.6, 1.0),
-    'lgbm__reg_alpha': hp.uniform('lgbm__reg_alpha', 0, 2),
-    'lgbm__reg_lambda': hp.uniform('lgbm__reg_lambda', 0, 2),
-    'rf__n_estimators': hp.quniform('rf__n_estimators', 100, 400, 50),
-    'rf__max_depth': hp.quniform('rf__max_depth', 4, 10, 1)
-}
+# stack_space = {
+#     # Hyperparameters for CatBoost
+#     'catboost__depth': hp.quniform('catboost__depth', 4, 8, 1),
+#     'catboost__learning_rate': hp.uniform('catboost__learning_rate', 0.01, 0.2),
+#     'catboost__iterations': hp.quniform('catboost__iterations', 100, 400, 50),
+#     'catboost__l2_leaf_reg': hp.uniform('catboost__l2_leaf_reg', 1, 10),
+#     # Hyperparameters for XGBoost
+#     'xgb__max_depth': hp.quniform('xgb__max_depth', 4, 8, 1),
+#     'xgb__learning_rate': hp.uniform('xgb__learning_rate', 0.01, 0.2),
+#     'xgb__n_estimators': hp.quniform('xgb__n_estimators', 100, 400, 50),
+#     'xgb__subsample': hp.uniform('xgb__subsample', 0.6, 1.0),
+#     'xgb__colsample_bytree': hp.uniform('xgb__colsample_bytree', 0.6, 1.0),
+#     'xgb__gamma': hp.uniform('xgb__gamma', 0, 5),
+#     # Hyperparameters for LightGBM
+#     'lgbm__num_leaves': hp.quniform('lgbm__num_leaves', 20, 40, 1),
+#     'lgbm__min_child_samples': hp.quniform('lgbm__min_child_samples', 10, 30, 1),
+#     'lgbm__subsample': hp.uniform('lgbm__subsample', 0.6, 1.0),
+#     'lgbm__reg_alpha': hp.uniform('lgbm__reg_alpha', 0, 2),
+#     'lgbm__reg_lambda': hp.uniform('lgbm__reg_lambda', 0, 2),
+#     # Hyperparameters for RandomForest (meta-model)
+#     'rf__n_estimators': hp.quniform('rf__n_estimators', 100, 400, 50),
+#     'rf__max_depth': hp.quniform('rf__max_depth', 4, 10, 1)
+# }
 
-print("\nOptimisation du modèle stacké avec RandomForest méta-modèle...")
-best_stack = fmin(
-    fn=stacking_objective,
-    space=stack_space,
-    algo=tpe.suggest,
-    max_evals=100,
-)
+# print("\nStacked Model Optimization with RandomForest meta-model...")
+# best_stack = fmin(
+#     fn=stacking_objective,
+#     space=stack_space,
+#     algo=tpe.suggest,
+#     max_evals=10,
+# )
 
-print("Best params for stacking:", best_stack)
+# print("Best params for stacking:", best_stack)
 
-# Fit final stacking model with best params
-cat_params = {
-    'depth': int(best_stack['catboost__depth']),
-    'learning_rate': best_stack['catboost__learning_rate'],
-    'iterations': int(best_stack['catboost__iterations']),
-    'l2_leaf_reg': best_stack['catboost__l2_leaf_reg'],
-    'verbose': 0,
-    'scale_pos_weight': proportion_MDR,
-    'random_state': 42
-}
-xgb_params = {
-    'max_depth': int(best_stack['xgb__max_depth']),
-    'learning_rate': best_stack['xgb__learning_rate'],
-    'n_estimators': int(best_stack['xgb__n_estimators']),
-    'subsample': best_stack['xgb__subsample'],
-    'colsample_bytree': best_stack['xgb__colsample_bytree'],
-    'gamma': best_stack['xgb__gamma'],
-    'scale_pos_weight': proportion_MDR,
-    'random_state': 42
-}
-lgbm_params = {
-    'num_leaves': int(best_stack['lgbm__num_leaves']),
-    'min_child_samples': int(best_stack['lgbm__min_child_samples']),
-    'subsample': best_stack['lgbm__subsample'],
-    'reg_alpha': best_stack['lgbm__reg_alpha'],
-    'reg_lambda': best_stack['lgbm__reg_lambda'],
-    'random_state': 42,
-    'verbose': -1
-}
-final_params = {
-    'n_estimators': int(best_stack['rf__n_estimators']),
-    'max_depth': int(best_stack['rf__max_depth']),
-    'class_weight': 'balanced',
-    'random_state': 42
-}
+# # Fit final stacking model with best params
+# cat_params = {
+#     'depth': int(best_stack['catboost__depth']),
+#     'learning_rate': best_stack['catboost__learning_rate'],
+#     'iterations': int(best_stack['catboost__iterations']),
+#     'l2_leaf_reg': best_stack['catboost__l2_leaf_reg'],
+#     'verbose': 0,
+#     'scale_pos_weight': proportion_MDR,
+#     'random_state': 42
+# }
+# xgb_params = {
+#     'max_depth': int(best_stack['xgb__max_depth']),
+#     'learning_rate': best_stack['xgb__learning_rate'],
+#     'n_estimators': int(best_stack['xgb__n_estimators']),
+#     'subsample': best_stack['xgb__subsample'],
+#     'colsample_bytree': best_stack['xgb__colsample_bytree'],
+#     'gamma': best_stack['xgb__gamma'],
+#     'scale_pos_weight': proportion_MDR,
+#     'random_state': 42
+# }
+# lgbm_params = {
+#     'num_leaves': int(best_stack['lgbm__num_leaves']),
+#     'min_child_samples': int(best_stack['lgbm__min_child_samples']),
+#     'subsample': best_stack['lgbm__subsample'],
+#     'reg_alpha': best_stack['lgbm__reg_alpha'],
+#     'reg_lambda': best_stack['lgbm__reg_lambda'],
+#     'random_state': 42,
+#     'verbose': -1
+# }
+# final_params = {
+#     'n_estimators': int(best_stack['rf__n_estimators']),
+#     'max_depth': int(best_stack['rf__max_depth']),
+#     'class_weight': 'balanced',
+#     'random_state': 42
+# }
 
-cat = Pipeline([
-    ('preprocess', preprocessing),
-    ('catboost', CatBoostClassifier(**cat_params))
-])
+# cat = Pipeline([
+#     ('preprocess', preprocessing),
+#     ('catboost', CatBoostClassifier(**cat_params))
+# ])
 
-xgb = Pipeline([
-    ('preprocess', preprocessing),
-    ('xgb', XGBClassifier(**xgb_params))
-])
+# xgb = Pipeline([
+#     ('preprocess', preprocessing),
+#     ('xgb', XGBClassifier(**xgb_params))
+# ])
 
-lgbm = Pipeline([
-    ('preprocess', preprocessing),
-    ('to_df', FunctionTransformer(to_dataframe, validate=False)),
-    ('lgbm', LGBMClassifier(**lgbm_params))
-])
+# lgbm = Pipeline([
+#     ('preprocess', preprocessing),
+#     ('to_df', FunctionTransformer(to_dataframe, validate=False)),
+#     ('lgbm', LGBMClassifier(**lgbm_params))
+# ])
 
-final_est = RandomForestClassifier(**final_params)
+# final_est = RandomForestClassifier(**final_params)
 
-stack = StackingClassifier(
-    estimators=[
-        ('cat', cat),
-        ('xgb', xgb),
-        ('lgbm', lgbm)
-    ],
-    final_estimator=final_est,
-    cv=cv,
-    n_jobs=-1
-)
+# stack = StackingClassifier(
+#     estimators=[
+#         ('cat', cat),
+#         ('xgb', xgb),
+#         ('lgbm', lgbm)
+#     ],
+#     final_estimator=final_est,
+#     cv=cv,
+#     n_jobs=-1
+# )
 
-stack.fit(X_train, y_train)
-y_pred = stack.predict(X_test)
-print("--- Stacking (RandomForest méta-modèle) ---")
-print(classification_report(y_test, y_pred))
-cm = confusion_matrix(y_test, y_pred)
-disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['Non-MDR', 'MDR'])
-disp.plot(cmap=plt.cm.Blues)
-plt.title("Confusion Matrix - Stacking (RF meta)")
-plt.show()
+# stack.fit(X_train, y_train)
+# y_pred = stack.predict(X_test)
+# print("--- Stacking (RandomForest meta-model) ---")
+# print(classification_report(y_test, y_pred))
+# cm = confusion_matrix(y_test, y_pred)
+# disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['Non-MDR', 'MDR'])
+# disp.plot(cmap=plt.cm.Blues)
+# plt.title("Confusion Matrix - Stacking (RF meta)")
+# plt.show()
 
 # =================================================================================================
 # INDIVIDUAL MODELS EVALUATION
 # =================================================================================================
 
+# score_RF = cross_val_score(RandomForest, X_train, y_train, cv=cv, scoring='f1', n_jobs=-1)
+# print("Random Forest CV F1 scores:", score_RF)
 # RandomForest.fit(X_train, y_train)
 # rf_pred = RandomForest.predict(X_test)
 # cm_rf = confusion_matrix(y_test, rf_pred)
 # print(cm_rf)
 # print(classification_report(y_test, rf_pred))
 
+# score_CB = cross_val_score(CatBoost, X_train, y_train, cv=cv, scoring='f1', n_jobs=-1)
+# print("CatBoost CV F1 scores:", score_CB)
 # CatBoost.fit(X_train, y_train)
 # cb_pred = CatBoost.predict(X_test)
 # cm_cb = confusion_matrix(y_test, cb_pred)
 # print(cm_cb)
 # print(classification_report(y_test, cb_pred))
 
+# score_XG = cross_val_score(XGBoost, X_train, y_train, cv=cv, scoring='f1', n_jobs=-1)
+# print("XGBoost CV F1 scores:", score_XG)
 # XGBoost.fit(X_train, y_train)
 # xg_pred = XGBoost.predict(X_test)
 # cm_xg = confusion_matrix(y_test, xg_pred)
@@ -512,7 +506,6 @@ plt.show()
 # print(classification_report(y_test, xg_pred))
 
 
-# Hyperparameters optimization
 
 
 
