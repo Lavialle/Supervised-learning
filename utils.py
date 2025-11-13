@@ -301,7 +301,7 @@ def cast_numerical_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 def drop_correlated_features(df: pd.DataFrame) -> pd.DataFrame: 
     df = df.drop(columns=[
-        'amx/amp_resistant', 'amc_resistant', 'cz_resistant', 'fox_resistant', 'ctx/cro_resistant', 'ipm_resistant',
+        'amx/amp_resistant', 'amc_resistant', 'cz_resistant', 'fox_resistant', 'ipm_resistant',
         'gen_resistant', 'an_resistant', 'acide_nalidixique_resistant', 'ofx_resistant', 'cip_resistant', 'c_resistant',
         'co-trimoxazole_resistant', 'furanes_resistant', 'colistine_resistant', 'comorbidity_score', 'age'
     ])
