@@ -93,12 +93,14 @@ flowchart TD
     E --> F1[XGBoost]
     E --> F2[LightGBM]
     E --> F3[CatBoost]
+    E --> F4[Logistic Regression]
     F1 --> G[Stacked Model: Meta-Model: Random Forest]
     F2 --> G
     F3 --> G
+    F4 --> G
     G --> H[Prediction: MDR or Non-MDR]
     H --> I[Evaluation: F1-Score, Decision Threshold Optimization]
-    H --> J[MLflow Logging]
+    H --> J[MLflow Logging: unimplemented because of lack of time]
 ```
 
 ---
@@ -119,10 +121,15 @@ flowchart TD
    ```
 
 4. **Run the pipeline and chose a model you want to test:**
+   > Check if you have `uv` installed in your global environment **before** running the main.py pipeline.
+   ```sh
+   uv python install
+   ```
+   You can run the main.py script and choose a model
    ```sh
    python main.py --model [individual, hyperopt, stacking]
    ```
-   > Check if you have `uv` installed in your global environment before running the main.py pipeline.
+   > 100 iterations for stacking model -> quite long
 
 ---
 
@@ -144,9 +151,3 @@ flowchart TD
 - **Impact:** _[Fill in score improvements, e.g. stacking F1 = 0.76 ± 0.02]_
 
 ---
-
-## Next Steps
-
-- Add final scores, feature choices, and detailed experiment impacts.
-- Add full contributor names.
-- Insert pipeline diagrams and suggestive images for visual enhancement.
