@@ -21,18 +21,18 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from utils.preprocessing import preprocess_data, preprocessing
 from utils.evaluation import evaluate_model
+import joblib
+import os
 
-
+# LIGHTGBM needs a DataFrame input after preprocessing
+def to_dataframe(X):
+    return X if isinstance(X, pd.DataFrame) else pd.DataFrame(X)
 
 def run_stacking():
     X, y = preprocess_data()
     proportion_MDR = (y == 0).sum() / (y == 1).sum()
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-
-    # LIGHTGBM needs a DataFrame input after preprocessing
-    def to_dataframe(X):
-        return X if isinstance(X, pd.DataFrame) else pd.DataFrame(X)
 
     # Objective function for Hyperopt optimization of the stacking model
     def stacking_objective(params):
@@ -162,7 +162,7 @@ def run_stacking():
         fn=stacking_objective,
         space=stack_space,
         algo=tpe.suggest,
-        max_evals=100, 
+        max_evals=70, 
         rstate=np.random.default_rng(42),
         trials = Trials()
     )
@@ -263,6 +263,8 @@ def run_stacking():
 
     print("\n==== Training the final stacked model ====")
     stack.fit(X_train, y_train)
+    os.makedirs("saved_models", exist_ok=True)
+    joblib.dump(stack, "saved_models/stacked_model.pkl")
     evaluate_model(stack, X_test, y_test, "Stacked Model")
 
 

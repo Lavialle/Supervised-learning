@@ -17,3 +17,5 @@ notebook
 jupyterlab
 ipykernel
 ipywidgets
+
+streamlit

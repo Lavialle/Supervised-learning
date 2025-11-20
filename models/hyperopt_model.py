@@ -13,7 +13,7 @@ import numpy as np
 from hyperopt import fmin, tpe, hp, Trials
 
 def run_hyperopt():
-    # Prétraitement des données
+    # Data preprocessing
     X, y = preprocess_data()
     proportion_MDR = (y == 0).sum() / (y == 1).sum()
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
@@ -34,7 +34,7 @@ def run_hyperopt():
         "XGBoost": XGBoost,
     }
 
-    # Définir les espaces de recherche pour Hyperopt
+    # Research spaces for hyperparameters
     search_spaces = {
         "CatBoost": {
             'CatBoost__depth': hp.quniform('CatBoost__depth', 4, 8, 1),
@@ -60,22 +60,22 @@ def run_hyperopt():
     best = {}
 
     for name, model in models.items():
-        print(f"\nOptimisation pour {name}...")
+        print(f"\nOptimization for {name}...")
 
-        # Évaluation simple avant optimisation
+        # Simple evaluation before optimization
         scores = cross_val_score(model, X_train, y_train, cv=cv, scoring='f1')
 
-        # Fonction objectif pour Hyperopt
+        # Objective function for Hyperopt
         def objective(params):
-            # Convertir les hyperparamètres en entiers si nécessaire
+            # Convert hyperparameters to integers if necessary
             for key in params:
                 if "depth" in key or "iterations" in key or "n_estimators" in key:
                     params[key] = int(params[key])
             model.set_params(**params)
             score = cross_val_score(model, X_train, y_train, cv=cv, scoring='f1', n_jobs=-1).mean()
-            return -score  # car fmin minimise
+            return -score  # because fmin minimizes
 
-        # Optimisation avec Hyperopt
+        # Optimization with Hyperopt
         trials = Trials()
         best_params = fmin(
             fn=objective,
@@ -85,16 +85,16 @@ def run_hyperopt():
             trials=trials
         )
 
-        # Convertir les hyperparamètres optimaux en entiers si nécessaire
+        # Convert the best hyperparameters to integers if necessary
         best_params = {k: int(v) if k.endswith("depth") or k.endswith("iterations") or k.endswith("n_estimators") else v
                        for k, v in best_params.items()}
 
         best[name] = best_params
 
-        # Entraîner le modèle avec les meilleurs hyperparamètres
+        # Train the model with the best hyperparameters
         model.set_params(**best_params)
         model.fit(X_train, y_train)
 
-        # Évaluer le modèle optimisé
+        # Evaluate the optimized model
         evaluate_model(model, X_test, y_test, name)
 
