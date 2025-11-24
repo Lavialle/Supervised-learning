@@ -81,7 +81,7 @@ def run_hyperopt():
             fn=objective,
             space=search_spaces[name],
             algo=tpe.suggest,
-            max_evals=20,
+            max_evals=30,
             trials=trials
         )
 

@@ -25,7 +25,7 @@ def install_requirements():
     if os.path.exists(requirements_file):
         try:
             print(f"Package installation from {requirements_file}...")
-            subprocess.check_call(["uv", "pip", "install", "-r", requirements_file])
+            subprocess.check_call(["pip", "install", "-r", requirements_file])
         except subprocess.CalledProcessError:
             print("Erreur lors de l'installation des packages.")
             exit(1)

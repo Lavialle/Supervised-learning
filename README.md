@@ -63,7 +63,7 @@ supervised-learning-final-project/
 │   └── Bacteria_dataset_Multiresictance.csv    # Raw dataset
 │   └── cleaned_bacteria_dataset.csv            # Clean version for EDA
 ├── main.py                                     # Main module for code execution
-├── streamlit_app.py                            # Simulation
+├── app.py                                      # Simulation
 ├── saved_models/                               # Model used for simulation
 │   └── staked_model.pkl
 ├── utils/                                      # Tools and modules to preprocessing and model
@@ -125,11 +125,7 @@ flowchart TD
 
 4. **Run the pipeline and chose a model you want to test:**
 
-   > Check if you have `uv` installed in your global environment **before** running the main.py pipeline.
-
-   ```sh
-   uv python install
-   ```
+   > In the main.py, there is a call to a function to automatically install the requirements if needed
 
    You can run the main.py script and choose a model
 
@@ -137,14 +133,14 @@ flowchart TD
    python main.py --model [individual, hyperopt, stacking]
    ```
 
-   > 100 iterations for stacking model -> quite long
+   > 70 iterations for stacking model -> quite long
 
-5. Or you can run the `streamlit_app.py` to simulate the admisson of the new patient (model used Stacking model)
+5. Or you can run the `app.py` to simulate the admisson of the new patient (model used Stacking model)
 
    Run:
 
 ```sh
-streamlit run streamlit_app.py
+streamlit run app.py
 ```
 
 in your terminal after (you have to install it from the requirement or run the `main.py` file).
