@@ -153,7 +153,7 @@ in your terminal after (you have to install it from the requirement or run the `
 - **Pre-processing:** Column cleaning, missing value handling, OneHot encoding for categoricals, scaling for numericals, imputation.
 - **Model:** RandomForestClassifier, CatBoostClassifier, Logistic Regression, no hyperparameter optimization.
 - **Metric:** F1-score (stratified 5-fold CV).
-- **Score:** _[F1 $\sim$ 0.51]_
+- **Score:** _[F1 $\simeq$ 0.51]_
 
 ---
 
@@ -164,6 +164,6 @@ in your terminal after (you have to install it from the requirement or run the `
 - **Hyperparameter optimization:** with hyperopt.
 - **Stacking:** combined multiple models (XGBoost, CatBoost, LightGBM, Logistic Regression) with RandomForest as meta-model.
 - **Metric** F1-Score (stratified)
-- **Impact:** _[stacking F1 $\sim$ 0.61]_
+- **Impact:** _[stacking F1 $\simeq$ 0.61]_
 
 ---
